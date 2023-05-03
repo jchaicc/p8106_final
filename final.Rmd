@@ -5,13 +5,15 @@ author: "Yuxin Liu; Jiayi Yang; Jingchen Chai"
 date: "2023-05-03"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 ```{r setup, message=FALSE}
 # load libraries
 library(tidyverse)
 library(caret)
+library(vip)
+library(rpart)
+library(rpart.plot)
 ```
 
 ```{r, results='hide'}
@@ -24,7 +26,6 @@ dat %>%
 set.seed(5929) 
 final1 =
   dat[sample(1:10000, 2000),] %>% 
-
   janitor::clean_names() %>%
   mutate (gender=as.factor(gender),
           hypertension=as.factor(hypertension),
@@ -36,7 +37,6 @@ final1 =
 set.seed(3186) 
 final2 =
   dat[sample(1:10000, 2000),] %>% 
-
   janitor::clean_names() %>%
   mutate (gender=as.factor(gender),
           hypertension=as.factor(hypertension),
@@ -45,10 +45,65 @@ final2 =
           severity=as.factor(severity),
           study=as.factor(study))
 
+# merge 2 dataset 
 final = merge(final1, final2, all=TRUE) %>% 
   select(-id)
+
+# add a new binary variable
+final = merge(final1, final2, all=TRUE) %>% 
+  select(-id) %>%
+  mutate(status=case_when(recovery_time <=30 ~ 0,
+                          recovery_time >30 ~ 1,
+                          ) ) 
+# Partition the dataset into two parts: training data (80%) and test data (20%)
+set.seed(2023) 
+trRows <- createDataPartition(y = final$recovery_time, p = 0.8, list = FALSE)
+
+# training data (80%)
+trainData <- final[trRows, ]
+trainData_matrix <- model.matrix(recovery_time ~., final)[ ,-1]
+x <- trainData_matrix[trRows,]
+y <- final$recovery_time[trRows]
+
+# testing data (20%)
+testData <- final[-trRows, ]
+testData_matrix = model.matrix(recovery_time ~., testData)[,-1]
+y2 <- final$recovery_time[-trRows]
+
+# choose methods
+ctrl1 = trainControl(method = "cv", number = 10)
 ```
+
 ```{r}
-#linear regression model
+# Multivariate Adaptive Regression Splines (MARS) Model
+set.seed(2023)
+
+# perform a grid search to identify optimal combination of hyperparameters
+mars_grid <- expand.grid(degree = 1:3, nprune = 2:25)
+
+# fit the model 
+mars.fit <- train(x, y,
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl1)
+
+# check plot
+ggplot(mars.fit) + labs(title = "Multivariate Adaptive Regression Splines (MARS) Model")
+
+# variable importance plot
+vip(mars.fit$finalModel)
+
+# check results
+mars.fit$bestTune
+coef(mars.fit$finalModel)
+
+# make predictions and test errors
+mars.pred <- predict(mars.fit, newdata = testData_matrix)
+mean((mars.pred - testData$recovery_time)^2)
 ```
+
+
+
+
+
 
