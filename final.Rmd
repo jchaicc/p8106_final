@@ -1,29 +1,51 @@
+
 ---
-title: "final"
-output: html_document
+title: ''
+author: "Yuxin Liu; Jiayi Yang; Jingchen Chai"
 date: "2023-05-03"
+output:
+  pdf_document: default
+  html_document: default
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, message=FALSE}
+# load libraries
+library(tidyverse)
+library(caret)
 ```
 
-## R Markdown
+```{r, results='hide'}
+# import and clean dataset 
+load("data/recovery.rdata")
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+dat %>% 
+  na.omit() 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+set.seed(5929) 
+final1 =
+  dat[sample(1:10000, 2000),] %>% 
 
-```{r cars}
-summary(cars)
+  janitor::clean_names() %>%
+  mutate (gender=as.factor(gender),
+          hypertension=as.factor(hypertension),
+          diabetes=as.factor(diabetes),
+          vaccine=as.factor(vaccine),
+          severity=as.factor(severity),
+          study=as.factor(study))
+
+set.seed(3186) 
+final2 =
+  dat[sample(1:10000, 2000),] %>% 
+
+  janitor::clean_names() %>%
+  mutate (gender=as.factor(gender),
+          hypertension=as.factor(hypertension),
+          diabetes=as.factor(diabetes),
+          vaccine=as.factor(vaccine),
+          severity=as.factor(severity),
+          study=as.factor(study))
+
+final = merge(final1, final2, all=TRUE) %>% 
+  select(-id)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
