@@ -93,6 +93,7 @@ table=final %>%
   modify_footnote(
     all_stat_cols() ~ "Median (IQR) or Frequency (%)"
   )
+table
 ```
 
 
@@ -224,6 +225,24 @@ vip(mars.fit$finalModel)
 mars.fit$bestTune
 coef(mars.fit$finalModel)
 
+```
+```{r}
+# Classification Tree 
+set.seed(2023)
+
+rpart.fit <- train(status ~ . ,
+                  final.train.bin,
+                   method = "rpart",
+                   tuneGrid = data.frame(cp = exp(seq(-10,-4, len = 50))),
+                   trControl = ctrl,
+                   metric = "ROC")
+
+# check plot
+ggplot(rpart.fit, highlight = TRUE) + labs(title = "ROC of Classification Tree")
+rpart.plot(rpart.fit$finalModel)
+
+# check results
+rpart.fit$bestTune
 ```
 
 
