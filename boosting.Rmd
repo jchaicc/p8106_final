@@ -110,11 +110,11 @@ final.test.bin = final.test.bin[, c(ncol(final.test.bin), 1:(ncol(final.test.bin
 
 
 
-final.train.x.bin <- model.matrix(~.-1,data=final.train.bin)
-final.train.y.bin <- final$status[rowTrain]
+final.train.x.bin <- model.matrix(status ~ ., data = final.train.bin)[,-1]
+final.train.y.bin <- final[rowTrain,]$status
 
-final.test.x.bin <- model.matrix(~.-1,data=final.test.bin)
-final.test.y.bin <- final$status[-rowTrain]
+final.test.x.bin <- model.matrix(status ~ ., data = final.test.bin)[,-1]
+final.test.y.bin <- final[-rowTrain,]$status
 
 ```
 
@@ -132,11 +132,11 @@ final.test.con = final.test.con[, c(ncol(final.test.con), 1:(ncol(final.test.con
 
 
 
-final.train.x.con <- model.matrix(~.-1,data=final.train.con)
-final.train.y.con <- final$recovery_time[rowTrain1]
+final.train.x.con <- model.matrix(recovery_time ~ ., data = final.train.con)[,-1]
+final.train.y.con <- final[rowTrain1,]$recovery_time
 
-final.test.x.con <- model.matrix(~.-1,data=final.test.con)
-final.test.y.con <- final$recovery_time[-rowTrain1]
+final.test.x.con <- model.matrix(recovery_time ~ ., data = final.test.con)[,-1]
+final.test.y.con <- final[-rowTrain1,]$recovery_time
 
 ```
 
@@ -201,6 +201,30 @@ elnet_model$bestTune
 ```
 
 
+```{r}
+# Multivariate Adaptive Regression Splines (MARS) Model
+set.seed(2023)
+
+# perform a grid search to identify optimal combination of hyperparameters
+mars_grid <- expand.grid(degree = 1:3, nprune = 2:25)
+
+# fit the model 
+mars.fit <- train(x = final.train.x.con, y = final.train.y.con, 
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl_1)
+
+# check plot
+ggplot(mars.fit) + labs(title = "Multivariate Adaptive Regression Splines (MARS) Model")
+
+# variable importance plot
+vip(mars.fit$finalModel)
+
+# check results
+mars.fit$bestTune
+coef(mars.fit$finalModel)
+
+```
 
 
 
