@@ -1,0 +1,206 @@
+---
+title: "boosting"
+output: html_document
+date: "2023-05-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, message=FALSE}
+# load libraries
+library(tidyverse)
+library(caret)
+library(vip)
+library(rpart)
+library(rpart.plot)
+library(visdat)
+library(gtsummary)
+library(pROC)
+```
+
+```{r, results='hide'}
+# import and clean dataset 
+load("data/recovery.rdata")
+
+dat %>% 
+  na.omit() 
+
+set.seed(5929) 
+final1 =
+  dat[sample(1:10000, 2000),] %>% 
+  janitor::clean_names() %>%
+  mutate (gender=as.factor(gender),
+          hypertension=as.factor(hypertension),
+          diabetes=as.factor(diabetes),
+          vaccine=as.factor(vaccine),
+          severity=as.factor(severity),
+          study=as.factor(study))
+
+set.seed(3186) 
+final2 =
+  dat[sample(1:10000, 2000),] %>% 
+  janitor::clean_names() %>%
+  mutate (
+          hypertension=as.factor(hypertension),
+          diabetes=as.factor(diabetes),
+          vaccine=as.factor(vaccine),
+          severity=as.factor(severity),
+          study=as.factor(study))
+
+# merge 2 dataset 
+final = merge(final1, final2, all=TRUE) %>% 
+  select(-id)
+
+# add a new binary variable
+final = merge(final1, final2, all=TRUE) %>% 
+  select(-id) %>%
+  mutate(status=case_when(recovery_time <=30 ~ 0,
+                          recovery_time >30 ~ 1,
+                          ) ) 
+
+```
+```{r}
+dat_number = c(1, 5, 6, 7, 10, 11)
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col <- rgb(.2, .4, .2, .5)
+theme1$plot.symbol$pch <- 16
+theme1$plot.line$col <- rgb(.8, .1, .1, 1)
+theme1$plot.line$lwd <- 2
+theme1$strip.background$col <- rgb(.0, .2, .6, .2)
+trellis.par.set(theme1)
+fp=featurePlot(x = final[, dat_number],
+            y = final$recovery_time, 
+            plot = "scatter", 
+            type = c("p", "smooth"),
+            layout = c(3, 2))
+fp
+```
+```{r load_data}
+final$gender<- as.factor(ifelse(final$gender == 1, "male", "female"))
+final$status<- as.factor(ifelse(final$status == 1, "rt.mt.30", "rt.lt.30"))
+```
+
+```{r}
+table=final %>%
+  tbl_summary(by = status, missing_text = "Missing/NA") %>%
+  add_p(pvalue_fun = ~style_pvalue(.x, digits = 2)) %>%
+  add_overall() %>%
+  add_n() %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Subject Type**") %>%
+  modify_footnote(
+    all_stat_cols() ~ "Median (IQR) or Frequency (%)"
+  )
+```
+
+
+```{r train_test_split_bin}
+set.seed(2023)
+rowTrain <- createDataPartition(y = final$status, p = 0.8, list = FALSE)
+
+final.train.bin <- final[rowTrain,]%>%select(-recovery_time) # delete recovery time
+
+# make the binary column to the first column
+final.train.bin = final.train.bin[, c(ncol(final.train.bin), 1:(ncol(final.train.bin)-1))] 
+
+final.test.bin <- final[-rowTrain,]%>%select(-recovery_time)
+final.test.bin = final.test.bin[, c(ncol(final.test.bin), 1:(ncol(final.test.bin)-1))]
+
+
+
+final.train.x.bin <- model.matrix(~.-1,data=final.train.bin)
+final.train.y.bin <- final$status[rowTrain]
+
+final.test.x.bin <- model.matrix(~.-1,data=final.test.bin)
+final.test.y.bin <- final$status[-rowTrain]
+
+```
+
+```{r train_test_split_con}
+
+set.seed(2023)
+rowTrain1 <- createDataPartition(y = final$recovery_time, p = 0.8, list = FALSE)
+final.train.con <- final[rowTrain1,]%>%select(-status) # delete binary
+
+# make the continuous column to the first column
+final.train.con = final.train.con[, c(ncol(final.train.con), 1:(ncol(final.train.con)-1))] 
+
+final.test.con <- final[-rowTrain1,]%>%select(-status) 
+final.test.con = final.test.con[, c(ncol(final.test.con), 1:(ncol(final.test.con)-1))]
+
+
+
+final.train.x.con <- model.matrix(~.-1,data=final.train.con)
+final.train.y.con <- final$recovery_time[rowTrain1]
+
+final.test.x.con <- model.matrix(~.-1,data=final.test.con)
+final.test.y.con <- final$recovery_time[-rowTrain1]
+
+```
+
+
+```{r ctrl}
+set.seed(2023)
+ctrl <- trainControl(method = "cv",
+                     classProbs = TRUE, 
+                     summaryFunction = twoClassSummary)
+```
+
+```{r adaboost}
+library(parallel)
+# Calculate the number of cores
+num_cores <- detectCores() - 1
+library(doParallel)
+# create the cluster for caret to use
+# CPU usage may go up to 100%
+cl <- makePSOCKcluster(num_cores)
+registerDoParallel(cl)
+gbm.grid <- expand.grid(n.trees = c(2000,3000,4000,5000),#
+                        interaction.depth = 1:6,
+                        shrinkage = c(0.0005,0.001,0.002),#
+                        n.minobsinnode = 1)
+set.seed(2023)
+gbm.fit <- train(status ~ . ,
+                  final.train.bin,
+                  tuneGrid = gbm.grid,
+                  trControl = ctrl,
+                  method = "gbm",
+                  distribution = "adaboost",
+                  metric = "ROC",
+                  verbose = FALSE)
+
+
+gbm=ggplot(gbm.fit, highlight = TRUE)
+ggsave(file="plots/gbm.png",gbm,width=8,height=5)
+
+gbm.fit$bestTune
+gbm.pred <- predict(gbm.fit, newdata = final.test.bin, type = "raw")
+gbm.pred
+error.rate.gbm <- mean(gbm.pred != final.test.y.bin)
+error.rate.gbm
+
+```
+
+```{r elasticnet}
+ctrl_1 = trainControl(method = "repeatedcv", number = 10, repeats = 5)
+set.seed(2023)
+# build elastic net model with caret
+elnet_model = train(final.train.x.con, final.train.y.con, 
+                    method = "glmnet",
+                    tuneGrid = expand.grid(alpha = seq(0, 1, length=21),
+                                           lambda = exp(seq(7, -1, length=50))),
+                    trControl = ctrl_1)
+myCol<- rainbow(21)
+myPar <- list(superpose.symbol = list(col = myCol),
+superpose.line = list(col = myCol))
+plot(elnet_model, par.settings = myPar)
+# show the best lambda and alpha combination with lowest cv rmse
+elnet_model$bestTune
+```
+
+
+
+
+
