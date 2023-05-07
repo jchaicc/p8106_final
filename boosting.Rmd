@@ -52,11 +52,7 @@ final2 =
           severity=as.factor(severity),
           study=as.factor(study))
 
-# merge 2 dataset 
-final = merge(final1, final2, all=TRUE) %>% 
-  select(-id)
-
-# add a new binary variable
+# merge 2 dataset and add a new binary variable
 final = merge(final1, final2, all=TRUE) %>% 
   select(-id) %>%
   mutate(status=case_when(recovery_time <=30 ~ 0,
