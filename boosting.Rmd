@@ -247,75 +247,53 @@ rpart.plot(rpart.fit$finalModel)
 rpart.fit$bestTune
 ```
 
-### SVM
+### SVM radial kernel
+
 ```{r}
-# linear kernerl SVM
+library(parallel)
+# Calculate the number of cores
+num_cores <- detectCores() 
+library(doParallel)
+# create the cluster for caret to use
+# CPU usage may go up to 100%
+cl <- makePSOCKcluster(num_cores)
+registerDoParallel(cl)
+
+
 set.seed(2023)
-linear.tune <- tune.svm(status ~ . ,
-                       data = final.train.bin,
-                        kernel = "linear",
-                        cost = exp(seq(-5,0,len=50)),
-                        scale = TRUE)
-plot(linear.tune)
-
-```
-```{r}
-# summary(linear.tune)
-linear.tune$best.parameters
-```
-```{r}
-best.linear <- linear.tune$best.model
-summary(best.linear)
-```
-```{r}
-# confusion matrix and test error
-#pred.linear <- predict(best.linear, newdata = final.test.bin)
-confusionMatrix(data = best.linear$fitted,
-                reference = final$status[rowTrain])
-
- confusionMatrix(data = best.linear$fitted,
-                reference = final$status[rowTrain])
-```
-
-
-```{r}
-# radial kernel
-set.seed(1)
 radial.tune <- tune.svm(status ~ . ,
-                        data = final[rowTrain, -15],
+                        data = final.train.bin,
                         kernel = "radial",
                         cost = exp(seq(-1,5,len=20)),
                         gamma = exp(seq(-4,3,len=20)))
 plot(radial.tune, transform.y = log, transform.x = log,
 color.palette = terrain.colors)
 
+best.radial = radial.tune$best.model
+
+# test error rate
+
+pred.radial = predict(best.radial, newdata=final.test.bin)
+confusionMatrix(data=pred.radial,reference = final.test.y.bin)
+
+stopCluster(cl)
+registerDoSEQ()
 ```
 
+
+
+
+## GAM
 ```{r}
-# summary(radial.tune)
-best.radial <- radial.tune$best.model
-summary(best.radial)
-#training error rate
-confusionMatrix(data = best.radial$fitted,
-                reference = df$mpg_cat[rowTrain])
-#test error rate
-pred.radial <- predict(best.radial, newdata = df[-rowTrain,])
-confusionMatrix(data = pred.radial,
-                reference = df$mpg_cat[-rowTrain])
-
+set.seed(2023)
+gam.fit <- train(x = final.train.x.con, y = final.train.y.con,
+                 method = "gam", tuneGrid = data.frame(method = "GCV.Cp", select = c(TRUE,FALSE)), 
+                 trControl = ctrl_1)
+gam.fit$bestTune
+gam.fit$finalModel
+plot(gam.fit$finalModel, shade = TRUE, pages = 4)
+summary(gam.fit$finalModel)
 ```
 
-## Lasso
-```{r}
-set.seed(1)
-lasso.fit <- train(x = final.train.x.con, y = final.train.y.con,
-              method = "glmnet",
-              tuneGrid = expand.grid(alpha = 1,
-              lambda = exp(seq(2, -2, length=100))),
-              trControl = ctrl)
-              plot(lasso.fit, xTrans = log)
-plot(lasso.fit, xTrans = log)    
-lasso.fit$bestTune
-```
 
 
