@@ -20,6 +20,7 @@ library(gtsummary)
 library(pROC)
 library(e1071)
 library(kernlab)
+library(ggplot2)
 ```
 
 ```{r, results='hide'}
@@ -190,7 +191,7 @@ error.rate.gbm
 ctrl_1 = trainControl(method = "repeatedcv", number = 10, repeats = 5)
 set.seed(2023)
 # build elastic net model with caret
-elnet_model = train(final.train.x.con, final.train.y.con, 
+enet_model = train(final.train.x.con, final.train.y.con, 
                     method = "glmnet",
                     tuneGrid = expand.grid(alpha = seq(0, 1, length=21),
                                            lambda = exp(seq(7, -1, length=50))),
@@ -198,9 +199,9 @@ elnet_model = train(final.train.x.con, final.train.y.con,
 myCol<- rainbow(21)
 myPar <- list(superpose.symbol = list(col = myCol),
 superpose.line = list(col = myCol))
-plot(elnet_model, par.settings = myPar)
+plot(enet_model, par.settings = myPar)
 # show the best lambda and alpha combination with lowest cv rmse
-elnet_model$bestTune
+enet_model$bestTune
 ```
 
 
@@ -294,6 +295,67 @@ gam.fit$finalModel
 plot(gam.fit$finalModel, shade = TRUE, pages = 4)
 summary(gam.fit$finalModel)
 ```
+# model comparison 1st analysis
+```{r}
+res <- resamples(list(ENET = enet_model,
+                      MARS = mars.fit,
+                      GAM= gam.fit
+                      ))
 
+rmse_plot <- bwplot(res, metric = "RMSE")
+rmse_plot
+```
 
+```{r}
+elnet.pred <- predict(elnet_model, newdata = final.test.x.con)
+test_error_elnet = mean((elnet.pred - final.test.y.con)^2)
+test_error_elnet
 
+mars.pred <- predict(mars.fit, newdata = final.test.x.con)
+test_error_mars = mean((mars.pred - final.test.y.con)^2)
+test_error_mars
+
+gam.pred <- predict(gam.fit, newdata = final.test.x.con)
+test_error_gam = mean((gam.pred - final.test.y.con)^2)
+test_error_gam
+
+```
+
+# model comparison 2nd analysis
+```{r}
+set.seed(2023)
+no_cores <- detectCores()
+cl <- makePSOCKcluster(no_cores)
+registerDoParallel(cl)
+svmr.grid = expand.grid(C = exp(seq(-1,4,len = 20)),
+                        sigma = exp(seq(-6,-2,len=20)))
+model.svmr = train(status~.,
+                   data = final.train.bin,
+                 method = "svmRadialSigma",
+                 tuneGrid = svmr.grid,
+                 metric = "Accuracy",
+                 trControl = ctrl)
+
+myCol = rainbow(20)
+myPar = list(superpose.symbol = list(col = myCol),
+             superpose.line = list(col = myCol))
+stopCluster(cl)
+registerDoSEQ()
+plot(model.svmr, hightlight = TRUE, par.settings = myPar)
+
+model.svmr$bestTune
+
+```
+
+```{r}
+res <- resamples(list(BOOSTING = gbm.fit,
+                      RPART = rpart.fit,
+                      SVNM= model.svmr
+                      ))
+
+accuracy_plot <- bwplot(res, metrc = "Accuracy")
+accuracy_plot
+
+ggsave(file="plots/accuracy.png",accuracy_plot,height=8,width=5)
+
+```
