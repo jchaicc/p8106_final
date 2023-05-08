@@ -2,6 +2,7 @@
 title: "boosting"
 output: html_document
 date: "2023-05-06"
+author: "Jingchen Chai", "Yuxin Liu", "Jiayi Yang"
 ---
 
 ```{r setup, include=FALSE}
@@ -77,6 +78,17 @@ fp=featurePlot(x = final[, dat_number],
             type = c("p", "smooth"),
             layout = c(3, 2))
 fp
+```
+```{r}
+par(mfrow=c(2,4))
+b1=boxplot(recovery_time ~ gender, data = final, xlab = "gender", ylim=c(0, 150))
+b2=boxplot(recovery_time ~ race, data = final, xlab = "race", ylim=c(0, 150))
+b3=boxplot(recovery_time ~ smoking, data = final, xlab = "smoking", ylim=c(0, 150))
+b4=boxplot(recovery_time ~ hypertension, data = final, xlab = "hypertension", ylim=c(0, 150))
+b5=boxplot(recovery_time ~ diabetes, data = final, xlab = "diabetes", ylim=c(0, 150))
+b6=boxplot(recovery_time ~ vaccine, data = final, xlab = "vaccine_status", ylim=c(0, 150))
+b8=boxplot(recovery_time ~ study, data = final, xlab = "study", ylim=c(0, 150))
+b9=boxplot(recovery_time ~ severity, data = final, xlab = "severity", ylim=c(0, 150))
 ```
 ```{r load_data}
 final$gender<- as.factor(ifelse(final$gender == 1, "male", "female"))
@@ -219,16 +231,15 @@ ctrl <- trainControl(method = "cv",
 
 # Adaboost
 ```{r adaboost}
-
 # Calculate the number of cores
-num_cores <- detectCores() - 1
+num_cores <- detectCores() 
 # create the cluster for caret to use
 # CPU usage may go up to 100%
 cl <- makePSOCKcluster(num_cores)
 registerDoParallel(cl)
-gbm.grid <- expand.grid(n.trees = c(2000,3000,4000,5000),#
-                        interaction.depth = 1:6,
-                        shrinkage = c(0.0005,0.001,0.002),#
+gbm.grid <- expand.grid(n.trees = c(2000,3000,4000,5000),
+                        interaction.depth = 1:8,
+                        shrinkage = c(0.03,0.05,0.07),
                         n.minobsinnode = 1)
 set.seed(2023)
 gbm.fit <- train(status ~ . ,
@@ -242,43 +253,40 @@ gbm.fit <- train(status ~ . ,
 
 
 gbm=ggplot(gbm.fit, highlight = TRUE)
-ggsave(file="plots/gbm.png",gbm,width=8,height=5)
-
 gbm.fit$bestTune
 gbm.pred <- predict(gbm.fit, newdata = final.test.bin, type = "raw")
-gbm.pred
 error.rate.gbm <- mean(gbm.pred != final.test.y.bin)
-error.rate.gbm
+stopCluster(cl)
+registerDoSEQ()
 ```
 
 # SVM radial kernel
 ```{r}
-# Calculate the number of cores
-num_cores <- detectCores() 
-# create the cluster for caret to use
-# CPU usage may go up to 100%
-cl <- makePSOCKcluster(num_cores)
-registerDoParallel(cl)
-
-
 set.seed(2023)
-radial.tune <- tune.svm(status ~ . ,
-                        data = final.train.bin,
-                        kernel = "radial",
-                        cost = exp(seq(-1,5,len=20)),
-                        gamma = exp(seq(-4,3,len=20)))
-plot(radial.tune, transform.y = log, transform.x = log,
-color.palette = terrain.colors)
+no_cores <- detectCores()
+cl <- makePSOCKcluster(no_cores)
+registerDoParallel(cl)
+svmr.grid = expand.grid(C = exp(seq(-1,4,len = 20)),
+                        sigma = exp(seq(-6,-2,len=20)))
+model.svmr = train(status~.,
+                   data = final.train.bin,
+                 method = "svmRadialSigma",
+                 tuneGrid = svmr.grid,
+                 metric = "Accuracy",
+                 trControl = ctrl)
 
-best.radial = radial.tune$best.model
-
-# test error rate
-
-pred.radial = predict(best.radial, newdata=final.test.bin)
-confusionMatrix(data=pred.radial,reference = final.test.y.bin)
-
+myCol = rainbow(20)
+myPar = list(superpose.symbol = list(col = myCol),
+             superpose.line = list(col = myCol))
 stopCluster(cl)
 registerDoSEQ()
+plot(model.svmr, hightlight = TRUE, par.settings = myPar)
+
+model.svmr$bestTune
+
+pred.svmr = predict(model.svmr, newdata = final.test.bin)
+confusionMatrix(data = pred.svmr,
+                reference = final.test.y.bin)
 ```
 
 # model comparison 1st analysis
@@ -287,7 +295,7 @@ res <- resamples(list(ENET = enet_model,
                       MARS = mars.fit,
                       GAM= gam.fit
                       ))
-
+summary(res)
 rmse_plot <- bwplot(res, metric = "RMSE")
 rmse_plot
 ```
