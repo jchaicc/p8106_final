@@ -142,9 +142,8 @@ final.test.y.con <- final[-rowTrain1,]$recovery_time
 
 ```
 
-
-
-```{r elasticnet}
+# Elastic Net Model
+```{r}
 ctrl_1 = trainControl(method = "repeatedcv", number = 10, repeats = 5)
 set.seed(2023)
 # build elastic net model with caret
@@ -160,7 +159,7 @@ plot(enet_model, par.settings = myPar)
 # show the best lambda and alpha combination with lowest cv rmse
 enet_model$bestTune
 ```
-## GAM
+# GAM
 ```{r}
 set.seed(2023)
 gam.fit <- train(x = final.train.x.con, y = final.train.y.con,
@@ -172,8 +171,8 @@ plot(gam.fit$finalModel, shade = TRUE, pages = 4)
 summary(gam.fit$finalModel)
 ```
 
-```{r}
 # Multivariate Adaptive Regression Splines (MARS) Model
+```{r}
 set.seed(2023)
 
 # perform a grid search to identify optimal combination of hyperparameters
@@ -196,8 +195,8 @@ mars.fit$bestTune
 coef(mars.fit$finalModel)
 
 ```
+# Classification Tree
 ```{r}
-# Classification Tree 
 set.seed(2023)
 
 rpart.fit <- train(status ~ . ,
@@ -256,8 +255,7 @@ error.rate.gbm
 
 ```
 
-### SVM radial kernel
-
+# SVM radial kernel
 ```{r}
 # Calculate the number of cores
 num_cores <- detectCores() 
@@ -286,10 +284,6 @@ confusionMatrix(data=pred.radial,reference = final.test.y.bin)
 stopCluster(cl)
 registerDoSEQ()
 ```
-
-
-
-
 
 # model comparison 1st analysis
 ```{r}
