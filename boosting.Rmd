@@ -21,6 +21,8 @@ library(pROC)
 library(e1071)
 library(kernlab)
 library(ggplot2)
+library(parallel)
+library(doParallel)
 ```
 
 ```{r, results='hide'}
@@ -141,47 +143,6 @@ final.test.y.con <- final[-rowTrain1,]$recovery_time
 ```
 
 
-```{r ctrl}
-set.seed(2023)
-ctrl <- trainControl(method = "cv",
-                     classProbs = TRUE, 
-                     summaryFunction = twoClassSummary)
-```
-
-```{r adaboost}
-library(parallel)
-# Calculate the number of cores
-num_cores <- detectCores() - 1
-library(doParallel)
-# create the cluster for caret to use
-# CPU usage may go up to 100%
-cl <- makePSOCKcluster(num_cores)
-registerDoParallel(cl)
-gbm.grid <- expand.grid(n.trees = c(2000,3000,4000,5000),#
-                        interaction.depth = 1:6,
-                        shrinkage = c(0.0005,0.001,0.002),#
-                        n.minobsinnode = 1)
-set.seed(2023)
-gbm.fit <- train(status ~ . ,
-                  final.train.bin,
-                  tuneGrid = gbm.grid,
-                  trControl = ctrl,
-                  method = "gbm",
-                  distribution = "adaboost",
-                  metric = "ROC",
-                  verbose = FALSE)
-
-
-gbm=ggplot(gbm.fit, highlight = TRUE)
-ggsave(file="plots/gbm.png",gbm,width=8,height=5)
-
-gbm.fit$bestTune
-gbm.pred <- predict(gbm.fit, newdata = final.test.bin, type = "raw")
-gbm.pred
-error.rate.gbm <- mean(gbm.pred != final.test.y.bin)
-error.rate.gbm
-
-```
 
 ```{r elasticnet}
 ctrl_1 = trainControl(method = "repeatedcv", number = 10, repeats = 5)
@@ -199,7 +160,17 @@ plot(enet_model, par.settings = myPar)
 # show the best lambda and alpha combination with lowest cv rmse
 enet_model$bestTune
 ```
-
+## GAM
+```{r}
+set.seed(2023)
+gam.fit <- train(x = final.train.x.con, y = final.train.y.con,
+                 method = "gam", tuneGrid = data.frame(method = "GCV.Cp", select = c(TRUE,FALSE)), 
+                 trControl = ctrl_1)
+gam.fit$bestTune
+gam.fit$finalModel
+plot(gam.fit$finalModel, shade = TRUE, pages = 4)
+summary(gam.fit$finalModel)
+```
 
 ```{r}
 # Multivariate Adaptive Regression Splines (MARS) Model
@@ -243,14 +214,53 @@ rpart.plot(rpart.fit$finalModel)
 # check results
 rpart.fit$bestTune
 ```
+```{r ctrl}
+set.seed(2023)
+ctrl <- trainControl(method = "cv",
+                     classProbs = TRUE, 
+                     summaryFunction = twoClassSummary)
+```
+
+# Adaboost
+```{r adaboost}
+
+# Calculate the number of cores
+num_cores <- detectCores() - 1
+# create the cluster for caret to use
+# CPU usage may go up to 100%
+cl <- makePSOCKcluster(num_cores)
+registerDoParallel(cl)
+gbm.grid <- expand.grid(n.trees = c(2000,3000,4000,5000),#
+                        interaction.depth = 1:6,
+                        shrinkage = c(0.0005,0.001,0.002),#
+                        n.minobsinnode = 1)
+set.seed(2023)
+gbm.fit <- train(status ~ . ,
+                  final.train.bin,
+                  tuneGrid = gbm.grid,
+                  trControl = ctrl,
+                  method = "gbm",
+                  distribution = "adaboost",
+                  metric = "ROC",
+                  verbose = FALSE)
+
+
+gbm=ggplot(gbm.fit, highlight = TRUE)
+ggsave(file="plots/gbm.png",gbm,width=8,height=5)
+
+gbm.fit$bestTune
+gbm.pred <- predict(gbm.fit, newdata = final.test.bin, type = "raw")
+gbm.pred
+error.rate.gbm <- mean(gbm.pred != final.test.y.bin)
+error.rate.gbm
+
+```
 
 ### SVM radial kernel
 
 ```{r}
-library(parallel)
 # Calculate the number of cores
 num_cores <- detectCores() 
-library(doParallel)
 # create the cluster for caret to use
 # CPU usage may go up to 100%
 cl <- makePSOCKcluster(num_cores)
@@ -280,17 +290,7 @@ registerDoSEQ()
 
 
 
-## GAM
-```{r}
-set.seed(2023)
-gam.fit <- train(x = final.train.x.con, y = final.train.y.con,
-                 method = "gam", tuneGrid = data.frame(method = "GCV.Cp", select = c(TRUE,FALSE)), 
-                 trControl = ctrl_1)
-gam.fit$bestTune
-gam.fit$finalModel
-plot(gam.fit$finalModel, shade = TRUE, pages = 4)
-summary(gam.fit$finalModel)
-```
+
 # model comparison 1st analysis
 ```{r}
 res <- resamples(list(ENET = enet_model,
